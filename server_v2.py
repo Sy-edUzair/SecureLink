@@ -190,13 +190,14 @@ def handle_client(client_socket, client_address):
                 if not message: 
                     continue
 
-                logging.debug(f"Decrypted from {name} ({client.uid}): {message[:50]}...")
+                # Don't log the actual message content for privacy
+                logging.debug(f"Decrypted message from {name} ({client.uid})")
 
                 if message.lower() == "exit":
                      logging.info(f"{name} ({client.uid}) requested exit.")
                      break 
                 broadcast_message = f"{name}: {message}"
-                logging.info(f"Broadcasting: {broadcast_message}")
+                logging.info(f"Broadcasting message from {name} ({client.uid})")
                 send_message(broadcast_message, client.uid)
 
             except socket.timeout:
