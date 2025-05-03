@@ -1,6 +1,9 @@
 # Secure Chat Application
 
 A secure end-to-end encrypted chat application built with Flask and SocketIO that provides secure communication through a hybrid RSA/AES encryption system.
+![image](https://github.com/user-attachments/assets/e29e5b65-8500-4aec-8ef3-224b8d25b182)
+![image](https://github.com/user-attachments/assets/96fcb44b-82d0-4dd8-aec5-d7ba7a7b8fbf)
+
 
 ## Features
 
