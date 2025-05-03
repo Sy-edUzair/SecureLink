@@ -96,7 +96,7 @@ CBC (Cipher Block Chaining) is an encryption mode used with AES that provides ad
 
 2. Install dependencies:
    ```
-   pip install flask flask-socketio pycryptodome rsa
+   pip install -r requirements.txt
    ```
 
 3. Start the chat server:
