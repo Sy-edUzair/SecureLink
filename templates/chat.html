@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Encrypted Chat</title>
+    <script src="https://cdn.socket.io/4.6.0/socket.io.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f8f9fa;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        .chat-container {
+            max-width: 800px;
+            margin: 50px auto;
+            border-radius: 10px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+            background-color: white;
+            overflow: hidden;
+        }
+
+        .chat-header {
+            background-color: #343a40;
+            color: white;
+            padding: 15px 20px;
+            border-radius: 10px 10px 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .login-container,
+        .chat-area {
+            padding: 20px;
+        }
+
+        .messages {
+            height: 400px;
+            overflow-y: auto;
+            padding: 15px;
+            background-color: #f5f5f5;
+            border-radius: 5px;
+            margin-bottom: 15px;
+        }
+
+        .message {
+            padding: 10px 15px;
+            margin-bottom: 10px;
+            border-radius: 15px;
+            max-width: 80%;
+            word-wrap: break-word;
+        }
+
+        .system-message {
+            background-color: #ffe0b2;
+            border: 1px solid #ffb74d;
+            margin: 10px auto;
+            text-align: center;
+            color: #795548;
+            font-style: italic;
+            padding: 5px 10px;
+            border-radius: 5px;
+            max-width: 80%;
+        }
+
+        .other-message {
+            background-color: #e3f2fd;
+            border: 1px solid #bbdefb;
+            float: left;
+            clear: both;
+        }
+
+        .self-message {
+            background-color: #e8f5e9;
+            border: 1px solid #c8e6c9;
+            float: right;
+            clear: both;
+        }
+
+        .sender-name {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .message-input {
+            display: flex;
+            gap: 10px;
+        }
+
+        #connection-status {
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 12px;
+        }
+
+        .connected {
+            background-color: #c8e6c9;
+            color: #2e7d32;
+        }
+
+        .disconnected {
+            background-color: #ffcdd2;
+            color: #c62828;
+        }
+
+        .clear-both {
+            clear: both;
+        }
+
+        #typing-indicator {
+            font-style: italic;
+            color: #757575;
+            margin-left: 10px;
+            font-size: 12px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container chat-container">
+        <div class="chat-header">
+            <h3>🔒 Encrypted Chat</h3>
+            <div id="connection-status" class="disconnected">Disconnected</div>
+        </div>
+
+        <!-- Login Form -->
+        <div id="login-container" class="login-container">
+            <div class="alert alert-info">Please enter your username to join the chat</div>
+            <div class="mb-3">
+                <label for="username" class="form-label">Username</label>
+                <input type="text" class="form-control" id="username"
+                    placeholder="Enter your username (2-31 characters)">
+            </div>
+            <button id="login-btn" class="btn btn-primary">Connect</button>
+            <div id="login-error" class="mt-3 text-danger"></div>
+        </div>
+
+        <!-- Chat Area -->
+        <div id="chat-area" class="chat-area" style="display: none;">
+            <div class="messages" id="messages">
+                <!-- Messages will be added here -->
+            </div>
+            <div id="typing-indicator"></div>
+            <div class="message-input">
+                <input type="text" id="message-input" class="form-control" placeholder="Type your message...">
+                <button id="send-btn" class="btn btn-primary">Send</button>
+                <button id="logout-btn" class="btn btn-outline-danger">Logout</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Connect to Socket.IO server with appropriate options
+        const socket = io({
+            transports: ['websocket'],
+            upgrade: false,
+            forceNew: true,
+            reconnection: true,
+            reconnectionAttempts: 10,
+            reconnectionDelay: 1000,
+            reconnectionDelayMax: 5000
+        });
+        let connected = false;
+        let username = '';
+        let messageQueue = [];
+
+        // DOM elements
+        const loginContainer = document.getElementById('login-container');
+        const chatArea = document.getElementById('chat-area');
+        const messagesContainer = document.getElementById('messages');
+        const usernameInput = document.getElementById('username');
+        const loginBtn = document.getElementById('login-btn');
+        const loginError = document.getElementById('login-error');
+        const messageInput = document.getElementById('message-input');
+        const sendBtn = document.getElementById('send-btn');
+        const logoutBtn = document.getElementById('logout-btn');
+        const connectionStatus = document.getElementById('connection-status');
+        const typingIndicator = document.getElementById('typing-indicator');
+
+        // Socket.IO event listeners
+        socket.on('connect', () => {
+            console.log('Socket connected to server');
+            connectionStatus.textContent = 'Connected to server';
+            connectionStatus.classList.remove('disconnected');
+            connectionStatus.classList.add('connected');
+        });
+
+        socket.on('disconnect', () => {
+            console.log('Socket disconnected from server');
+            connected = false;
+            connectionStatus.textContent = 'Disconnected';
+            connectionStatus.classList.remove('connected');
+            connectionStatus.classList.add('disconnected');
+            showLoginForm();
+        });
+
+        socket.on('login_response', (data) => {
+            console.log('Login response:', data);
+            // Reset login button
+            loginBtn.disabled = false;
+            loginBtn.textContent = 'Connect';
+
+            if (data.success) {
+                connected = true;
+                username = usernameInput.value;
+                connectionStatus.textContent = 'Connected';
+                connectionStatus.classList.remove('disconnected');
+                connectionStatus.classList.add('connected');
+                showChatArea();
+            } else {
+                connectionStatus.textContent = 'Connection unsuccessful';
+                connectionStatus.classList.remove('connected');
+                connectionStatus.classList.add('disconnected');
+                loginError.textContent = data.message;
+            }
+        });
+
+        socket.on('system_message', (data) => {
+            console.log('System message:', data);
+            addSystemMessage(data.message);
+        });
+
+        socket.on('chat_message', (data) => {
+            console.log('Chat message received:', data);
+
+            if (data.self) {
+                addSelfMessage(data.message);
+            } else {
+                addOtherMessage(data.message);
+            }
+
+            // Process any pending messages in the queue
+            processMessageQueue();
+        });
+
+        socket.on('error', (error) => {
+            console.error('Socket.IO error:', error);
+            addSystemMessage('Connection error: ' + error);
+        });
+
+        socket.on('logout_response', (data) => {
+            console.log('Logout response:', data);
+            if (data.success) {
+                connected = false;
+                showLoginForm();
+            }
+        });
+
+        // UI Functions
+        function showLoginForm() {
+            loginContainer.style.display = 'block';
+            chatArea.style.display = 'none';
+            loginError.textContent = '';
+            usernameInput.value = username; // Keep the previous username
+        }
+
+        function showChatArea() {
+            loginContainer.style.display = 'none';
+            chatArea.style.display = 'block';
+            messageInput.focus();
+            messagesContainer.innerHTML = ''; // Clear previous messages
+            addSystemMessage('Connection successful');
+        }
+
+        function addSystemMessage(message) {
+            const messageElement = document.createElement('div');
+            messageElement.className = 'system-message';
+            messageElement.textContent = message;
+            messagesContainer.appendChild(messageElement);
+            scrollToBottom();
+        }
+
+        function addSelfMessage(message) {
+            // Add to queue to ensure proper order
+            messageQueue.push({ type: 'self', message });
+            processMessageQueue();
+        }
+
+        function addOtherMessage(message) {
+            // Add to queue to ensure proper order
+            messageQueue.push({ type: 'other', message });
+            processMessageQueue();
+        }
+
+        function processMessageQueue() {
+            if (messageQueue.length === 0) return;
+
+            const item = messageQueue.shift();
+            const messageElement = document.createElement('div');
+
+            if (item.type === 'self') {
+                messageElement.className = 'message self-message';
+            } else {
+                messageElement.className = 'message other-message';
+            }
+
+            if (item.message.includes(':')) {
+                const parts = item.message.split(':', 2);
+                const sender = parts[0].trim();
+                const content = parts[1].trim();
+
+                const senderElement = document.createElement('div');
+                senderElement.className = 'sender-name';
+                senderElement.textContent = item.type === 'self' ? 'You' : sender;
+
+                const contentElement = document.createElement('div');
+                contentElement.textContent = content;
+
+                messageElement.appendChild(senderElement);
+                messageElement.appendChild(contentElement);
+            } else {
+                messageElement.textContent = item.message;
+            }
+
+            messagesContainer.appendChild(messageElement);
+
+            // Add a div to clear the float
+            const clearDiv = document.createElement('div');
+            clearDiv.className = 'clear-both';
+            messagesContainer.appendChild(clearDiv);
+
+            scrollToBottom();
+
+            // Process next item if any
+            if (messageQueue.length > 0) {
+                setTimeout(processMessageQueue, 10);
+            }
+        }
+
+        function scrollToBottom() {
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+
+        function sendMessage() {
+            const message = messageInput.value.trim();
+            if (message && connected) {
+                console.log('Sending message:', message);
+                socket.emit('send_message', { message });
+                messageInput.value = '';
+                messageInput.focus();
+            }
+        }
+
+        // Event listeners
+        loginBtn.addEventListener('click', () => {
+            username = usernameInput.value.trim();
+            if (username.length >= 2 && username.length <= 31) {
+                // Show connecting message
+                loginError.textContent = '';
+                loginBtn.disabled = true;
+                loginBtn.textContent = 'Connecting...';
+                connectionStatus.textContent = 'Connecting...';
+                connectionStatus.classList.remove('connected', 'disconnected');
+                connectionStatus.classList.add('disconnected');
+
+                socket.emit('login', { username });
+
+                // Set a timeout to re-enable button if no response received
+                setTimeout(() => {
+                    if (loginBtn.textContent === 'Connecting...') {
+                        loginBtn.disabled = false;
+                        loginBtn.textContent = 'Connect';
+                    }
+                }, 5000);
+            } else {
+                loginError.textContent = 'Username must be between 2-31 characters';
+            }
+        });
+
+        usernameInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                loginBtn.click();
+            }
+        });
+
+        sendBtn.addEventListener('click', sendMessage);
+
+        messageInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+
+        logoutBtn.addEventListener('click', () => {
+            socket.emit('logout');
+        });
+
+        // Add keyboard shortcut to exit chat (Escape key)
+        document.addEventListener('keydown', (e) => {
+            // Check if in chat area and Escape key is pressed
+            if (chatArea.style.display !== 'none' && e.key === 'Escape') {
+                // Show confirmation dialog
+                if (confirm('Are you sure you want to exit the chat?')) {
+                    console.log('Exiting chat via Escape key');
+                    socket.emit('logout');
+                }
+            }
+        });
+
+        // Auto-focus username input on page load
+        window.addEventListener('load', () => {
+            usernameInput.focus();
+        });
+    </script>
+</body>
+
+</html>

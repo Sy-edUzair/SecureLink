@@ -1,0 +1,8 @@
+flask==2.3.3
+flask-socketio==5.3.6
+python-socketio==5.10.0
+python-engineio==4.8.0
+eventlet==0.33.3
+pyasn1==0.6.1
+pycryptodome==3.22.0
+rsa==4.9.1
